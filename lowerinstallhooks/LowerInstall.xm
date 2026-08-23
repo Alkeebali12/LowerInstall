@@ -140,7 +140,17 @@ static void LIPrefsChanged(
 #pragma mark - App Store Hooks
 
 %group StoreHooks
+%hook UIDevice
 
+- (NSString *)systemVersion
+{
+    if (LIEnabled && LISpoofVersion.length) {
+        return LISpoofVersion;
+    }
+    return %orig;
+}
+
+%end
 %hook NSMutableURLRequest
 
 - (void)setValue:(NSString *)value
