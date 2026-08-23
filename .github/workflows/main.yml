@@ -23,11 +23,18 @@ jobs:
         run: |
           git clone --recursive https://github.com/theos/theos.git $HOME/theos
           echo "THEOS=$HOME/theos" >> $GITHUB_ENV
-      - name: Install iOS SDK
+            -      - name: Install iOS SDK
         run: |
           rm -rf $HOME/theos/sdks
           git clone --depth=1 https://github.com/theos/sdks.git $HOME/theos/sdks
 
+      - name: Install iOS Toolchain
+        run: |
+          rm -rf $HOME/theos/toolchain
+          mkdir -p $HOME/theos/toolchain
+          curl -L https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain.tar.xz -o /tmp/iOSToolchain.tar.xz
+          tar -xJf /tmp/iOSToolchain.tar.xz -C $HOME/theos/toolchain
+          test -x $HOME/theos/toolchain/linux/iphone/bin/clang
 
       - name: Build package
         run: |
@@ -38,5 +45,7 @@ jobs:
       - name: Upload DEB
         uses: actions/upload-artifact@v4
         with:
+          name: LowerInstall-DEB
+          path: packages/*.deb
           name: LowerInstall-DEB
           path: packages/*.deb
