@@ -342,13 +342,15 @@ forHTTPHeaderField:(NSString *)field
                 (__progname ? __progname : "")];
 
         if ([process isEqualToString:@"appstored"] ||
-            [process isEqualToString:@"itunesstored"]) {
+    [process isEqualToString:@"itunesstored"] ||
+    [process isEqualToString:@"storekitd"] ||
+    [process isEqualToString:@"AppStore"]) {
 
-            %init(StoreHooks);
+    %init(StoreHooks);
 
-        } else if ([process isEqualToString:@"installd"]) {
+} else if ([process isEqualToString:@"installd"]) {
 
-            %init(InstallHooks);
-        }
+    %init(InstallHooks);
+}
     }
 }
