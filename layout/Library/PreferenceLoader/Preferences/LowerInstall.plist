@@ -2,7 +2,7 @@
     entry = {
         bundle = LowerInstallSettings;
         cell = PSLinkCell;
-        detail = LowerInstallSettingsController;
-        label = LowerInstall;
+        label = "LowerInstall";
+        isController = 1;
     };
 }
