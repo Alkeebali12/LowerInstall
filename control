@@ -1,0 +1,11 @@
+Package: com.julioverne.lowerinstall16
+Name: LowerInstall 16
+Version: 0.2.0
+Architecture: iphoneos-arm64
+Description: LowerInstall compatibility update for iOS 16 rootless jailbreaks. Spoofs App Store version checks and relaxes selected MobileInstallation compatibility checks.
+Maintainer: Community update
+Author: Julio Verne (original), iOS 16 compatibility update
+Section: Tweaks
+Depends: firmware (>= 16.0), firmware (<< 17.0), preferenceloader
+Conflicts: com.julioverne.lowerinstall
+Provides: com.julioverne.lowerinstall

@@ -1,0 +1,9 @@
+{
+    Filter = {
+        Executables = (
+            appstored,
+            itunesstored,
+            installd
+        );
+    };
+}

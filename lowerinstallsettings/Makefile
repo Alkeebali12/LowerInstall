@@ -1,13 +1,10 @@
 include $(THEOS)/makefiles/common.mk
 
 BUNDLE_NAME = LowerInstallSettings
-$(BUNDLE_NAME)_FILES = /mnt/d/codes/lowerinstall/lowerinstallsettings/LowerInstallSettingsController.mm
-$(BUNDLE_NAME)_INSTALL_PATH = /Library/PreferenceBundles
-$(BUNDLE_NAME)_FRAMEWORKS = UIKit QuartzCore CoreGraphics MessageUI Social Twitter
-$(BUNDLE_NAME)_PRIVATE_FRAMEWORKS = Preferences
-$(BUNDLE_NAME)_CFLAGS = -fobjc-arc
-
-$(BUNDLE_NAME)_ARCHS = armv7 armv7s arm64 arm64e
-export ARCHS = armv7 armv7s arm64 arm64e
+LowerInstallSettings_FILES = LowerInstallSettingsController.m
+LowerInstallSettings_INSTALL_PATH = /Library/PreferenceBundles
+LowerInstallSettings_FRAMEWORKS = UIKit
+LowerInstallSettings_PRIVATE_FRAMEWORKS = Preferences
+LowerInstallSettings_CFLAGS = -fobjc-arc
 
 include $(THEOS_MAKE_PATH)/bundle.mk

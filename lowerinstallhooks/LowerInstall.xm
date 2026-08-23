@@ -1,264 +1,98 @@
-#import <objc/runtime.h>
+#import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
 #import <notify.h>
-#import <dlfcn.h>
-#import <substrate.h>
 #import <sys/utsname.h>
 
 extern const char *__progname;
 
-#define NSLog(...)
+static NSString * const kPrefsPath = @"/var/mobile/Library/Preferences/com.julioverne.lowerinstall.plist";
+static NSString * const kPrefsNotify = @"com.julioverne.lowerinstall/SettingsChanged";
 
-#define PLIST_PATH_Settings "/var/mobile/Library/Preferences/com.julioverne.lowerinstall.plist"
+static BOOL LIEnabled = YES;
+static NSString *LISpoofVersion;
+static NSString *LISpoofDevice;
+static NSString *LICurrentVersion;
+static NSString *LICurrentDevice;
 
+static NSString *LIDeviceModel(void) {
+    struct utsname info;
+    if (uname(&info) != 0) return @"iPhone";
+    return [NSString stringWithUTF8String:info.machine] ?: @"iPhone";
+}
 
-static BOOL Enabled;
+static NSString *LINormalizedVersion(NSString *value, NSString *fallback) {
+    if (![value isKindOfClass:NSString.class]) return fallback;
+    NSString *v = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:@"^[0-9]{1,2}(\\.[0-9]{1,2}){0,2}$" options:0 error:nil];
+    if ([re numberOfMatchesInString:v options:0 range:NSMakeRange(0, v.length)] != 1) return fallback;
+    return v;
+}
 
-typedef enum {
-	kUserAgent=0,
-	kUserAgentFormat=1,
-	kCurrentDeviceType=2,
-	kCurrentiOSVersion=3,
-	kSpoofDeviceType=4,
-	kSpoofiOSVersion=5,
-} LowerInstall_var_Num;
+static void LILoadPrefs(void) {
+    @autoreleasepool {
+        NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:kPrefsPath] ?: @{};
+        LICurrentVersion = UIDevice.currentDevice.systemVersion ?: @"16.0";
+        LICurrentDevice = LIDeviceModel();
+        LIEnabled = [prefs[@"Enabled"] ?: @YES boolValue];
+        LISpoofVersion = LINormalizedVersion(prefs[@"SpoofVersion"], LICurrentVersion);
+        NSString *dev = [prefs[@"SpoofDevice"] isKindOfClass:NSString.class] ? prefs[@"SpoofDevice"] : LICurrentDevice;
+        LISpoofDevice = dev.length ? dev : LICurrentDevice;
+    }
+}
 
-#define MAX_STRING_LEN 30
-#define STORED_STRING LowerInstall_var7956
+static void LIPrefsChanged(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef userInfo) {
+    LILoadPrefs();
+}
 
-char STORED_STRING[10][MAX_STRING_LEN];
-#define StringVal(VALUE_ST) [NSString stringWithUTF8String:STORED_STRING[VALUE_ST]]
-
-
-%group itunesstoredHooks
+%group StoreHooks
 
 %hook NSMutableURLRequest
-
-- (void)setValue:(NSString *)value forHTTPHeaderField:(NSString *)field
-{
-	if((Enabled && field && value) && [field isEqualToString:StringVal(kUserAgent)]) {
-		if([value rangeOfString:StringVal(kCurrentiOSVersion)].location != NSNotFound) {
-			value = [value stringByReplacingOccurrencesOfString:[NSString stringWithFormat:StringVal(kUserAgentFormat), StringVal(kCurrentiOSVersion)] withString:[NSString stringWithFormat:StringVal(kUserAgentFormat), StringVal(kSpoofiOSVersion)]];
-			value = [value stringByReplacingOccurrencesOfString:[NSString stringWithFormat:StringVal(kUserAgentFormat), StringVal(kCurrentDeviceType)] withString:[NSString stringWithFormat:StringVal(kUserAgentFormat), StringVal(kSpoofDeviceType)]];
-		}
-	}
-	%orig(value, field);
+- (void)setValue:(NSString *)value forHTTPHeaderField:(NSString *)field {
+    if (!LIEnabled || !value.length || !field.length || [field caseInsensitiveCompare:@"User-Agent"] != NSOrderedSame) {
+        %orig(value, field);
+        return;
+    }
+    NSString *newValue = value;
+    if (LICurrentVersion.length && LISpoofVersion.length && ![LICurrentVersion isEqualToString:LISpoofVersion]) {
+        newValue = [newValue stringByReplacingOccurrencesOfString:LICurrentVersion withString:LISpoofVersion];
+    }
+    if (LICurrentDevice.length && LISpoofDevice.length && ![LICurrentDevice isEqualToString:LISpoofDevice]) {
+        newValue = [newValue stringByReplacingOccurrencesOfString:LICurrentDevice withString:LISpoofDevice];
+    }
+    %orig(newValue, field);
 }
-
 %end
 
 %end
 
-%group installdHooks
+%group InstallHooks
 
 %hook MIDaemonConfiguration
-
-- (BOOL)skipDeviceFamilyCheck
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
-- (BOOL)skipThinningCheck
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
+- (BOOL)skipDeviceFamilyCheck { return LIEnabled ? YES : %orig; }
+- (BOOL)skipThinningCheck { return LIEnabled ? YES : %orig; }
 %end
 
 %hook MIBundle
-
-- (NSString*)minimumOSVersion
-{
-	NSString* ret = %orig;
-	if(Enabled) {
-		ret = @"2.0";
-	}
-	return ret;
-}
-
-- (NSArray *)supportedDevices
-{
-	NSArray* ret = %orig?:@[];
-	if(Enabled && ![ret containsObject:StringVal(kCurrentDeviceType)]) {
-		NSMutableArray* retMut = [ret mutableCopy];
-		[retMut addObject:StringVal(kCurrentDeviceType)];
-		ret = [retMut copy];
-	}
-	return ret;
-}
-
-- (BOOL)isCompatibleWithDeviceFamily:(int)device
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-- (BOOL)isApplicableToCurrentDeviceFamilyWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-- (BOOL)isApplicableToCurrentOSVersionWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-- (BOOL)isApplicableToOSVersion:(id)arg1 error:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-- (BOOL)isApplicableToCurrentDeviceCapabilitiesWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-- (BOOL)thinningMatchesCurrentDeviceWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
-- (BOOL)validateAppMetadataWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
-- (BOOL)validatePluginMetadataWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
+- (NSString *)minimumOSVersion { return LIEnabled ? @"2.0" : %orig; }
+- (BOOL)isCompatibleWithDeviceFamily:(int)device { return LIEnabled ? YES : %orig; }
+- (BOOL)isApplicableToCurrentDeviceFamilyWithError:(id *)error { if (LIEnabled) { if (error) *error = nil; return YES; } return %orig; }
+- (BOOL)isApplicableToCurrentOSVersionWithError:(id *)error { if (LIEnabled) { if (error) *error = nil; return YES; } return %orig; }
+- (BOOL)isApplicableToOSVersion:(id)version error:(id *)error { if (LIEnabled) { if (error) *error = nil; return YES; } return %orig; }
+- (BOOL)isApplicableToCurrentDeviceCapabilitiesWithError:(id *)error { if (LIEnabled) { if (error) *error = nil; return YES; } return %orig; }
+- (BOOL)thinningMatchesCurrentDeviceWithError:(id *)error { if (LIEnabled) { if (error) *error = nil; return YES; } return %orig; }
+%end
 
 %end
 
-%hook MIInstallableBundle
-
--(BOOL)_validateApplicationIdentifierForNewBundleSigningInfo:(id)arg1 error:(id *)arg2
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
--(BOOL)_verifyBundleMetadataWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
--(BOOL)_verifySubBundleMetadataWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
-
-// wa
--(BOOL)_isValidWatchKitApp:(id)arg1 withVersion:(id)arg2 installableSigningInfo:(id)arg3 error:(id *)arg4
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
-
-%end
-
-
-%hook MIExecutableBundle
-//wa
-- (BOOL)hasOnlyAllowedWatchKitAppInfoPlistKeysForWatchKitVersion:(id)arg1 error:(id*)arg2
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
-%end
-
-
-%hook MIPluginKitPluginBundle
-
-- (BOOL)validateBundleMetadataWithError:(id*)error
-{
-	if(Enabled) {
-		return YES;
-	}
-	return %orig;
-}
-
-%end
-
-
-%end
-
-static void settingsChangedLowerInstall()
-{	
-	@autoreleasepool {
-		NSDictionary *LowerInstallPrefs = [[[NSDictionary alloc] initWithContentsOfFile:@PLIST_PATH_Settings]?:[NSDictionary dictionary] copy];
-		Enabled = (BOOL)[[LowerInstallPrefs objectForKey:@"Enabled"]?:@YES boolValue];
-		
-		NSString* CurrentDeviceTypeSpoof = [LowerInstallPrefs objectForKey:@"SpoofDevice"]?:StringVal(kCurrentDeviceType);
-		bzero(STORED_STRING[kSpoofDeviceType], MAX_STRING_LEN);
-		memcpy(STORED_STRING[kSpoofDeviceType],(const void*)CurrentDeviceTypeSpoof.UTF8String, [CurrentDeviceTypeSpoof length]);
-		
-		NSString* CurrentiOSVersionSpoof = [LowerInstallPrefs objectForKey:@"SpoofVersion"]?:StringVal(kCurrentiOSVersion);
-		bzero(STORED_STRING[kSpoofiOSVersion], MAX_STRING_LEN);
-		memcpy(STORED_STRING[kSpoofiOSVersion],(const void*)CurrentiOSVersionSpoof.UTF8String, [CurrentiOSVersionSpoof length]);
-	}
-}
-
-%ctor
-{
-	bzero(STORED_STRING[kUserAgent], MAX_STRING_LEN);
-	strcpy(STORED_STRING[kUserAgent], "User-Agent");
-	
-	bzero(STORED_STRING[kUserAgentFormat], MAX_STRING_LEN);
-	strcpy(STORED_STRING[kUserAgentFormat], "/%@ ");
-	
-	struct utsname systemInfo;
-	uname(&systemInfo);	
-	bzero(STORED_STRING[kCurrentDeviceType], MAX_STRING_LEN);
-	strcpy(STORED_STRING[kCurrentDeviceType], systemInfo.machine);
-	
-	bzero(STORED_STRING[kCurrentiOSVersion], MAX_STRING_LEN);
-	strcpy(STORED_STRING[kCurrentiOSVersion], [NSString stringWithFormat:@"%@", [[UIDevice currentDevice] systemVersion]].UTF8String);
-	
-	CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)settingsChangedLowerInstall, CFSTR("com.julioverne.lowerinstall/SettingsChanged"), NULL, CFNotificationSuspensionBehaviorCoalesce);
-	settingsChangedLowerInstall();
-
-	if(strcmp(__progname, "itunesstored") == 0) {
-		%init(itunesstoredHooks);
-	} else {
-		%init(installdHooks);
-	}
+%ctor {
+    @autoreleasepool {
+        LILoadPrefs();
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, LIPrefsChanged, (__bridge CFStringRef)kPrefsNotify, NULL, CFNotificationSuspensionBehaviorCoalesce);
+        NSString *process = [NSString stringWithUTF8String:__progname ?: ""];
+        if ([process isEqualToString:@"appstored"] || [process isEqualToString:@"itunesstored"]) {
+            %init(StoreHooks);
+        } else if ([process isEqualToString:@"installd"]) {
+            %init(InstallHooks);
+        }
+    }
 }

@@ -1,0 +1,8 @@
+{
+    entry = {
+        bundle = LowerInstallSettings;
+        cell = PSLinkCell;
+        detail = LowerInstallSettingsController;
+        label = LowerInstall;
+    };
+}
